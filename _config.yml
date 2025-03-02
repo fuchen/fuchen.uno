@@ -4,12 +4,21 @@
 
 # Site
 title: 晨思
-subtitle: ''
+subtitle: '沉淀与记录'
 description: ''
-keywords:
+keywords: [AI, Machine Learning, Deep Learning, Computer Vision, Natural Language Processing]
 author: Fu Chen
 language: zh-cn
 timezone: ''
+
+social:
+  twitter: IAmFuChen
+  rss: rss2.xml
+  atom: atom.xml
+  weibo:
+  instagram:
+  github:
+  facebook:
 
 # URL
 ## Set your site url here. For example, if you use GitHub Page, set url as 'https://username.github.io/project'

@@ -5,37 +5,37 @@
       div
         h3(title="")
           a(href="/")= config.title
-        if theme.description
+        if config.subtitle
           .description
-            p= theme.description
+            p= config.subtitle
 
         ul.social-links
-          if theme.twitter
+          if config.social.twitter
             li
-              a(href="https://twitter.com/" + theme.twitter)
+              a(href="https://twitter.com/" + config.social.twitter)
                 i.fa-brands.fa-x-twitter
-          if theme.instagram
+          if config.social.instagram
             li
-              a(href="http://instagram.com/" + theme.instagram)
+              a(href="http://instagram.com/" + config.social.instagram)
                 i.fa-brands.fa-instagram
-          if theme.atom
+          if config.social.atom
             li
-              a(href= url_for(theme.atom))
+              a(href= url_for(config.social.atom))
                 i.fa.fa-atom
-          if theme.rss
+          if config.social.rss
             li
-              a(href= url_for(theme.rss))
+              a(href= url_for(config.social.rss))
                 i.fa.fa-rss
-          if theme.weibo
+          if config.social.weibo
             li
-              a(href="http://weibo.com/" + theme.weibo)
+              a(href="http://weibo.com/" + config.social.weibo)
                 i.fa-brands.fa-weibo
-          if theme.facebook
+          if config.social.facebook
             li
-              a(href="http://facebook.com/" + theme.facebook)
+              a(href="http://facebook.com/" + config.social.facebook)
                 i.fa-brands.fa-facebook
-          if theme.github
+          if config.social.github
             li
-              a(href="http://github.com/" + theme.github)
+              a(href="http://github.com/" + config.social.github)
                 i.fa-brands.fa-github
   include footer
