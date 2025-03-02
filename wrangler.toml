@@ -1,0 +1,4 @@
+name = "fuchen-uno"
+type = "javascript"
+[site]
+bucket = "./public"
