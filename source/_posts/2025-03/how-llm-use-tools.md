@@ -8,6 +8,8 @@ tags: [AI, LLM]
 
 那么 LLM 是如何调用本地 tools 的呢？
 
+<!--more-->
+
 ## 怎么提供工具给 LLM
 
 以 OpenAI 为例，可以在 HTTP request 里告诉 LLM 有哪些可用的工具，以及如何调用。
