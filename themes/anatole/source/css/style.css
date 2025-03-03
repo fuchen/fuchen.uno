@@ -5,7 +5,7 @@ html {
 }
 
 body {
-  color: rgba(0, 0, 0, 0.9);
+  color: #222;
   font-family: "PingHei", "PingFang SC", Helvetica Neue, "Work Sans", "Hiragino Sans GB", "Microsoft YaHei", SimSun, sans-serif;
   font-size: 15px;
   width: 100%;
@@ -207,7 +207,7 @@ a:hover, a:active {
 }
 .sidebar .logo-title .title a {
   text-decoration: none;
-  color: #464646;
+  color: #222;
   font-size: 2rem;
   font-weight: bold;
 }
@@ -263,6 +263,7 @@ a:hover, a:active {
 .post .post-title a {
   text-decoration: none;
   letter-spacing: 1px;
+  color: #222;
 }
 .post .post-title a:hover {
   text-decoration: underline;
