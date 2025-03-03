@@ -5,7 +5,7 @@ html {
 }
 
 body {
-  color: rgba(0, 0, 0, 0.8);
+  color: rgba(0, 0, 0, 0.9);
   font-family: "PingHei", "PingFang SC", Helvetica Neue, "Work Sans", "Hiragino Sans GB", "Microsoft YaHei", SimSun, sans-serif;
   font-size: 15px;
   width: 100%;
@@ -173,7 +173,7 @@ a:hover, a:active {
   width: 30%;
   -webkit-background-size: cover;
   background-size: cover;
-  background-color: #F2F2F7;
+  background-color: #f1ede8;
   height: 100%;
   transition: 0.8s;
   top: 0;
@@ -276,12 +276,10 @@ a:hover, a:active {
   color: #2F69B3;
 }
 .post .post-content h3 {
-  color: #5F5F5F;
   font-size: 22px;
   font-weight: 600;
 }
 .post .post-content h4 {
-  color: #5F5F5F;
   font-size: 16px;
 }
 .post .post-content .read-more {
@@ -297,7 +295,7 @@ a:hover, a:active {
 .post .post-footer .meta {
   max-width: 100%;
   height: 25px;
-  color: #bbbbbb;
+  color: #888;
 }
 .post .post-footer .meta .info {
   float: left;
@@ -308,7 +306,7 @@ a:hover, a:active {
 }
 .post .post-footer .meta a {
   text-decoration: none;
-  color: #bbbbbb;
+  color: #888;
   padding-right: 10px;
 }
 .post .post-footer .meta a:hover {
@@ -426,7 +424,7 @@ a:hover, a:active {
 }
 .list-with-title .listing-title {
   font-size: 24px;
-  color: #666666;
+  color: #555;
   font-weight: 600;
   line-height: 2.2em;
 }
@@ -441,7 +439,7 @@ a:hover, a:active {
   color: #C5C5C5;
 }
 .list-with-title .listing .listing-post a {
-  color: #8F8F8F;
+  color: #666;
 }
 .list-with-title .listing .listing-post a:hover {
   color: #4786D6;
