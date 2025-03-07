@@ -92,7 +92,7 @@ tags: [AI, agent, MetaGPT]
 
 ## 整体架构分析：
 
-最后，我借助了 Claude 3.7 来帮我解读 MetaGPT 的代码库，基于 [commit df9bc18](https://github.com/geekan/MetaGPT/tree/df9bc1858f7d396a7eef5d9718cab7587b63fd62)。
+最后，我借助了 Claude 3.7 来帮助解读 MetaGPT 的代码库，基于 [commit df9bc18](https://github.com/geekan/MetaGPT/tree/df9bc1858f7d396a7eef5d9718cab7587b63fd62)。
 
 > ### 核心组件
 >
