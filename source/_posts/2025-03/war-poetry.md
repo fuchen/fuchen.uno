@@ -7,7 +7,6 @@ categories:
 tags:
   - poetry
   - war
-  - analysis
 ---
 
 ----------------------------
