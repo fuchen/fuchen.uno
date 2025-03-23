@@ -1,6 +1,5 @@
-
 ---
-title: PostgreSQL CTE：SQL中的便利贴
+title: "PostgreSQL CTE：SQL中的便利贴"
 date: 2025-03-23 23:31
 tags:
   - SQL
@@ -9,6 +8,8 @@ tags:
 ---
 
 说到PostgreSQL的CTE（Common Table Expressions），我总觉得它就像SQL里的便利贴。你可以在查询的任何地方贴上一张，写上"待会儿要用这个"，然后继续往下写。是不是听起来比子查询要优雅多了？
+
+<!--less-->
 
 让我们从一个简单的例子开始。假设我们有个员工表，想找出工资高于平均工资的员工：
 
