@@ -1,5 +1,5 @@
 ---
-title: 几首战争相关的诗
+title: 关于战争
 date: 2025-03-23 22:16:00
 categories:
   - Literature
