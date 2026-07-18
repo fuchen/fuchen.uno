@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>三国群英 — 策略版</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <!-- 标题画面 -->
+  <div id="screen-title" class="screen">
+    <div class="title-box">
+      <h1>三國群英</h1>
+      <p class="subtitle">— 乱世策略 · 回合制战棋 —</p>
+      <div class="menu">
+        <button id="btn-new" class="btn big">新的开始</button>
+        <button id="btn-load" class="btn big">读取存档</button>
+        <button id="btn-settings" class="btn big">AI 设置</button>
+        <button id="btn-help" class="btn big">游戏说明</button>
+      </div>
+      <p class="hint">存档保存在浏览器 IndexedDB 中 · 建议使用 Chrome / Edge</p>
+    </div>
+  </div>
+
+  <!-- 剧本 / 势力选择 -->
+  <div id="screen-setup" class="screen hidden">
+    <h2 id="setup-title">选择剧本</h2>
+    <div id="setup-list" class="setup-list"></div>
+    <button id="btn-setup-back" class="btn">返回</button>
+  </div>
+
+  <!-- 战略画面 -->
+  <div id="screen-map" class="screen hidden">
+    <div id="topbar">
+      <span id="tb-date"></span>
+      <span id="tb-faction"></span>
+      <span id="tb-info"></span>
+      <div class="spacer"></div>
+      <button id="btn-endturn" class="btn primary">结束本月</button>
+      <button id="btn-save" class="btn">存档</button>
+      <button id="btn-load2" class="btn">读档</button>
+      <button id="btn-ai-settings" class="btn">AI</button>
+      <button id="btn-help2" class="btn">说明</button>
+      <button id="btn-totitle" class="btn">标题</button>
+    </div>
+    <div id="map-wrap">
+      <canvas id="map-canvas" width="1056" height="720"></canvas>
+      <div id="side-panel" class="hidden"></div>
+    </div>
+    <div id="log-bar"></div>
+  </div>
+
+  <!-- 战斗画面 -->
+  <div id="screen-battle" class="screen hidden">
+    <canvas id="battle-canvas" width="1056" height="600"></canvas>
+    <div id="battle-cmd" class="hidden"></div>
+    <div id="battle-log"></div>
+  </div>
+
+  <!-- 通用弹窗 -->
+  <div id="modal" class="hidden"><div id="modal-box"></div></div>
+</div>
+<script src="dist/bundle.js"></script>
+</body>
+</html>
