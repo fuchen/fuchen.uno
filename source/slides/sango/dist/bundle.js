@@ -609,15 +609,14 @@
     return squads;
   }
   function buildMoveSquads(genIds, totalTroops) {
-    const gens = genIds.slice(0, MAX_SQUADS - 1);
+    const gens = genIds.slice(0, MAX_SQUADS);
     const total = Math.max(0, Math.round(totalTroops));
     if (gens.length === 0) return total > 0 ? [{ genId: null, troops: total }] : [];
     const per = Math.floor(total / gens.length);
-    const squads = gens.map((g, i) => ({
+    return gens.map((g, i) => ({
       genId: g,
       troops: per + (i === 0 ? total - per * gens.length : 0)
-    })).filter((s) => s.troops > 0);
-    return squads;
+    }));
   }
   function bestStat(city, stat) {
     let best = 40;
@@ -662,7 +661,8 @@
         let total = 0;
         const seen = /* @__PURE__ */ new Set();
         for (const s of cmd.squads) {
-          if (s.troops < 100) return "\u6BCF\u961F\u5175\u529B\u81F3\u5C11100";
+          if (s.troops < 0) return "\u5175\u529B\u4E0D\u80FD\u4E3A\u8D1F";
+          if (s.genId == null && s.troops < 100) return "\u65E0\u6B66\u5C06\u961F\u4F0D\u5175\u529B\u81F3\u5C11100";
           total += s.troops;
           if (s.genId != null) {
             if (!city.generals.includes(s.genId)) return "\u6240\u9009\u6B66\u5C06\u4E0D\u5728\u57CE\u4E2D";
@@ -677,7 +677,7 @@
         for (const g of cmd.captives) {
           if (!city.captives.some((cp) => cp.genId === g)) return "\u6240\u9009\u4FD8\u864F\u4E0D\u5728\u57CE\u4E2D";
         }
-        if (total + Math.floor(cmd.gold) + Math.floor(cmd.food) + cmd.captives.length === 0) return "\u6CA1\u6709\u8981\u8C03\u52A8\u7684\u5185\u5BB9";
+        if (seen.size + total + Math.floor(cmd.gold) + Math.floor(cmd.food) + cmd.captives.length === 0) return "\u6CA1\u6709\u8981\u8C03\u52A8\u7684\u5185\u5BB9";
         return null;
       }
       case "attack": {
@@ -712,7 +712,9 @@
     }
   }
   function buildDefenseSquads(state, city) {
-    const gens = [...city.generals].sort((a, b) => GENERALS[b].lead + GENERALS[b].war - (GENERALS[a].lead + GENERALS[a].war)).slice(0, MAX_SQUADS);
+    const rulerId = city.owner ? factionById(state, city.owner).ruler : -1;
+    const rank = (g) => GENERALS[g].lead + GENERALS[g].war + (g === rulerId ? -1e3 : 0);
+    const gens = [...city.generals].sort((a, b) => rank(b) - rank(a)).slice(0, MAX_SQUADS);
     const total = Math.max(0, Math.round(city.troops));
     if (gens.length === 0) {
       const n = Math.min(DEF_MILITIA_MAX, Math.max(1, Math.ceil(total / 4e3) || 1));
@@ -847,7 +849,9 @@
             defenders,
             wallBonus: Math.min(0.35, 0.1 + to.wall / 250),
             atkTrain: city.train,
-            defTrain: to.train
+            defTrain: to.train,
+            // 守方没有其他己方城可退时背水一战
+            defCanRetreat: to.owner ? nearestOwnedCity(state, to.id, to.owner) != null : false
           }
         };
       }
@@ -869,6 +873,33 @@
     let p = 0.78 - gs.loyalty * 6e-3 + (rulerCha - g.cha) * 2e-3;
     if (!fromF) p += 0.2;
     return clamp(p, 0.05, 0.95);
+  }
+  function collapseFaction(state, fid, winnerFid) {
+    const f = state.factions.find((x) => x.id === fid && x.alive);
+    if (!f || fid === winnerFid) return;
+    f.alive = false;
+    const winName = winnerFid ? factionById(state, winnerFid).name : null;
+    for (const c2 of factionCities(state, fid)) {
+      c2.owner = winnerFid;
+      if (winnerFid) {
+        c2.captives = c2.captives.filter((cp) => {
+          if (cp.from === winnerFid) {
+            c2.generals.push(cp.genId);
+            return false;
+          }
+          return true;
+        });
+        for (const g of c2.generals) {
+          const gs = state.genStates[g];
+          if (gs) gs.loyalty = 55;
+        }
+      }
+    }
+    if (winName) {
+      pushLog(state, `\u3010\u53D8\u5929\u3011${f.name} \u541B\u4E3B\u6709\u5931\uFF0C\u4E3E\u65CF\u5F52\u9644 ${winName}\uFF0C${f.name} \u52BF\u529B\u706D\u4EA1\uFF01`);
+    } else {
+      pushLog(state, `\u3010\u8BA3\u544A\u3011${f.name} \u541B\u4E3B\u6709\u5931\uFF0C\u52BF\u529B\u571F\u5D29\u74E6\u89E3\u2026\u2026`);
+    }
   }
   function captiveAction(state, fid, cityId, genId, action) {
     var _a, _b;
@@ -898,47 +929,30 @@
       return { ok: false, msg: `${g.name} \u62D2\u7EDD\u6295\u964D\u3002\uFF08\u5176\u5FC3\u5FD7\u5DF2\u52A8\u6447\uFF0C\u4E0B\u6708\u53EF\u518D\u8BD5\uFF09` };
     }
     if (action === "release") {
-      city.captives.splice(idx, 1);
       const fromF2 = cp.from ? state.factions.find((x) => x.id === cp.from && x.alive) : null;
-      if (fromF2) {
-        const home = factionCities(state, fromF2.id)[0];
-        if (home) {
-          home.generals.push(genId);
-          gs.loyalty = Math.min(100, gs.loyalty + 10);
-          pushLog(state, `${f.name} \u91CA\u653E\u4E86 ${g.name}\uFF0C\u5176\u56DE\u5230 ${fromF2.name}\u3002`);
-          return { ok: true, msg: `${g.name} \u88AB\u91CA\u653E\uFF0C\u56DE\u5230\u4E86\u6545\u4E3B\u5904\u3002` };
-        }
+      const home = fromF2 ? factionCities(state, fromF2.id)[0] : null;
+      if (!home) {
+        return { ok: false, msg: `${g.name} \u6545\u4E3B\u5DF2\u4EA1\uFF0C\u65E0\u5904\u53EF\u53BB\uFF0C\u65E0\u6CD5\u91CA\u653E\u3002\uFF08\u53EF\u62DB\u964D\u6216\u65A9\u9996\uFF09` };
       }
-      delete state.genStates[genId];
-      pushLog(state, `${f.name} \u91CA\u653E\u4E86 ${g.name}\uFF0C\u5176\u4ECE\u6B64\u9690\u5C45\u4E0D\u4ED5\u3002`);
-      return { ok: true, msg: `${g.name} \u88AB\u91CA\u653E\uFF0C\u4ECE\u6B64\u9690\u5C45\u4E0D\u4ED5\u3002` };
+      city.captives.splice(idx, 1);
+      home.generals.push(genId);
+      gs.loyalty = Math.min(100, gs.loyalty + 10);
+      pushLog(state, `${f.name} \u91CA\u653E\u4E86 ${g.name}\uFF0C\u5176\u56DE\u5230 ${fromF2.name}\u3002`);
+      return { ok: true, msg: `${g.name} \u88AB\u91CA\u653E\uFF0C\u56DE\u5230\u4E86\u6545\u4E3B\u5904\u3002` };
     }
     city.captives.splice(idx, 1);
     delete state.genStates[genId];
     pushLog(state, `\u3010\u65A9\u9996\u3011${f.name} \u5904\u6B7B\u4E86 ${g.name}\uFF01`);
     const fromF = cp.from ? state.factions.find((x) => x.id === cp.from && x.alive) : null;
     if (fromF) {
-      const wasRuler = fromF.ruler === genId;
-      for (const c2 of factionCities(state, fromF.id)) {
-        for (const gid of c2.generals) {
-          const s2 = state.genStates[gid];
-          if (s2) s2.loyalty = Math.min(100, s2.loyalty + (wasRuler ? 15 : 8));
-        }
-      }
-      if (wasRuler) {
-        let heir = 0, best = -1;
+      if (fromF.ruler === genId) {
+        collapseFaction(state, fromF.id, fid);
+      } else {
         for (const c2 of factionCities(state, fromF.id)) {
           for (const gid of c2.generals) {
-            if (GENERALS[gid].lead > best) {
-              best = GENERALS[gid].lead;
-              heir = gid;
-            }
+            const s2 = state.genStates[gid];
+            if (s2) s2.loyalty = Math.min(100, s2.loyalty + 8);
           }
-        }
-        if (heir) {
-          fromF.ruler = heir;
-          state.genStates[heir].loyalty = 100;
-          pushLog(state, `${GENERALS[heir].name} \u7EE7\u627F\u4E86 ${fromF.name} \u7684\u57FA\u4E1A\u3002`);
         }
       }
     }
@@ -980,18 +994,22 @@
       for (const u of result.survivors.def) {
         if (u.genId == null) continue;
         const refuge = defFid ? nearestOwnedCity(state, to.id, defFid) : null;
-        if (refuge) refuge.generals.push(u.genId);
-        else delete state.genStates[u.genId];
+        if (refuge) {
+          refuge.generals.push(u.genId);
+        } else {
+          to.captives.push({ genId: u.genId, from: defFid, tried: false });
+          captures.push(u.genId);
+          pushLog(state, `\u3010\u4FD8\u864F\u3011${GENERALS[u.genId].name} \u65E0\u8DEF\u53EF\u9000\uFF0C\u88AB ${atkF.name} \u64D2\u83B7\uFF01`);
+        }
       }
       for (const g of [...to.generals]) {
-        if (winF && rng.chance(captureChance(g) * 0.6)) {
+        const refuge = defFid ? nearestOwnedCity(state, to.id, defFid) : null;
+        if (refuge && !rng.chance(captureChance(g) * 0.6)) {
+          refuge.generals.push(g);
+        } else {
           to.captives.push({ genId: g, from: defFid, tried: false });
           captures.push(g);
-          pushLog(state, `\u3010\u4FD8\u864F\u3011${GENERALS[g].name} \u5728\u57CE\u7834\u65F6\u88AB ${winF.name} \u64D2\u83B7\uFF01`);
-        } else {
-          const refuge = defFid ? nearestOwnedCity(state, to.id, defFid) : null;
-          if (refuge) refuge.generals.push(g);
-          else delete state.genStates[g];
+          pushLog(state, `\u3010\u4FD8\u864F\u3011${GENERALS[g].name} \u5728\u57CE\u7834\u65F6\u88AB ${atkF.name} \u64D2\u83B7\uFF01`);
         }
       }
       to.generals = [];
@@ -1021,6 +1039,10 @@
       for (const u of result.survivors.atk) if (u.genId != null) from.generals.push(u.genId);
       to.wall = Math.max(5, to.wall - 8);
       pushLog(state, `\u3010\u6218\u62A5\u3011${toName} \u5B88\u4F4F\u4E86${atkF.name}\u7684\u8FDB\u653B\uFF01`);
+    }
+    for (const g of captures) {
+      const rf = state.factions.find((x) => x.alive && x.ruler === g);
+      if (rf) collapseFaction(state, rf.id, winFid);
     }
     for (const f of state.factions) {
       if (!f.alive) continue;
@@ -1121,6 +1143,7 @@
       over: false,
       winner: null,
       wallBonus: setup.wallBonus,
+      defCanRetreat: setup.defCanRetreat,
       atkFactionId: setup.attackerFactionId,
       defFactionId: setup.defenderFactionId
     };
@@ -1266,7 +1289,9 @@
     const enemies = enemiesOf(b, u.side);
     const allies = alliesOf(b, u.side);
     const weakest = [...enemies].sort((a, b2) => a.troops - b2.troops)[0];
-    if (u.troops < u.maxTroops * 0.18 && rng.chance(0.35)) return { type: "retreat" };
+    if (u.troops < u.maxTroops * 0.18 && rng.chance(0.35) && (u.side === "atk" || b.defCanRetreat)) {
+      return { type: "retreat" };
+    }
     const healSkill = u.skills.find((s) => SKILLS[s].kind === "heal");
     if (healSkill && u.qi >= SKILLS[healSkill].qiCost) {
       const hurtAlly = [...allies].sort((a, b2) => a.troops / a.maxTroops - b2.troops / b2.maxTroops)[0];
@@ -1338,8 +1363,10 @@
         const ratio = avail / Math.max(1, defPower);
         const threshold = 1.15 - f.aggression * 0.35;
         if (ratio > threshold) {
-          const gens = [...c2.generals].sort((a, b) => genCombatRank(b) - genCombatRank(a)).slice(0, 5);
-          plans.push({ from: c2, to: e, score: ratio * rng.range(0.9, 1.15), generals: gens, troops: Math.min(avail, 2e4) });
+          const pool = [...c2.generals].sort((a, b) => genCombatRank(b) - genCombatRank(a));
+          const nonRuler = pool.filter((g) => g !== f.ruler);
+          const gens = (nonRuler.length > 0 ? nonRuler : pool).slice(0, 5);
+          plans.push({ from: c2, to: e, score: ratio * rng.range(0.9, 1.15), generals: gens, troops: Math.min(avail, 2e4), ratio });
         }
       }
     }
@@ -1352,7 +1379,10 @@
       if (busySrc.has(p.from.id) || busyTgt.has(p.to.id)) continue;
       const squads = buildAttackSquads(state, p.generals, Math.floor(p.troops));
       if (squads.length === 0) continue;
-      cmds.push({ type: "attack", cityId: p.from.id, to: p.to.id, squads });
+      cmds.push({
+        cmd: { type: "attack", cityId: p.from.id, to: p.to.id, squads },
+        note: `\u5175\u529B ${Math.round(p.ratio * 10) / 10} \u500D\u4E8E ${CITY_BY_ID[p.to.id].name} \u5B88\u519B\uFF0C\u5175\u53D1 ${CITY_BY_ID[p.to.id].name}\uFF01`
+      });
       busySrc.add(p.from.id);
       busyTgt.add(p.to.id);
       attacksLeft--;
@@ -1360,37 +1390,38 @@
     for (const c2 of myCities) {
       if (busySrc.has(c2.id)) continue;
       const isFront = frontier.has(c2.id);
+      const name = CITY_BY_ID[c2.id].name;
       if (isFront) {
         const threatened = neighborsOf(state, c2.id).some((n) => n.owner !== fid && n.troops > c2.troops * 1.2);
         if (threatened) {
           if (c2.troops < maxTroopsOf(c2) && c2.gold >= recruitQuote(c2).cost && c2.loyalty > 35 && c2.food > c2.troops * 0.1) {
-            cmds.push({ type: "recruit", cityId: c2.id });
+            cmds.push({ cmd: { type: "recruit", cityId: c2.id }, note: `${name} \u544A\u6025\uFF0C\u7D27\u6025\u5F81\u5175\u5907\u6218` });
             continue;
           }
           if (c2.wall < 85 && c2.gold >= 200) {
-            cmds.push({ type: "wall", cityId: c2.id });
+            cmds.push({ cmd: { type: "wall", cityId: c2.id }, note: `${name} \u544A\u6025\uFF0C\u52A0\u56FA\u57CE\u9632` });
             continue;
           }
-          cmds.push({ type: "rest", cityId: c2.id });
+          cmds.push({ cmd: { type: "rest", cityId: c2.id } });
           continue;
         }
         if (c2.troops < maxTroopsOf(c2) * 0.8 && c2.gold >= recruitQuote(c2).cost && c2.loyalty > 35 && c2.food > c2.troops * 0.1) {
-          cmds.push({ type: "recruit", cityId: c2.id });
+          cmds.push({ cmd: { type: "recruit", cityId: c2.id }, note: `${name} \u6269\u519B\u5907\u6218` });
           continue;
         }
         if (c2.train < 70 && c2.troops >= 3e3 && c2.gold >= 100) {
-          cmds.push({ type: "train", cityId: c2.id });
+          cmds.push({ cmd: { type: "train", cityId: c2.id }, note: `${name} \u64CD\u7EC3\u58EB\u5352` });
           continue;
         }
         if (c2.wall < 60 && c2.gold >= 200) {
-          cmds.push({ type: "wall", cityId: c2.id });
+          cmds.push({ cmd: { type: "wall", cityId: c2.id }, note: `${name} \u52A0\u56FA\u57CE\u9632` });
           continue;
         }
         if (c2.gold >= 200 && (c2.agri < 90 || c2.comm < 90)) {
-          cmds.push(c2.agri <= c2.comm ? { type: "farm", cityId: c2.id } : { type: "commerce", cityId: c2.id });
+          cmds.push(c2.agri <= c2.comm ? { cmd: { type: "farm", cityId: c2.id }, note: `${name} \u5F00\u57A6\u519C\u4E1A` } : { cmd: { type: "commerce", cityId: c2.id }, note: `${name} \u53D1\u5C55\u5546\u4E1A` });
           continue;
         }
-        cmds.push({ type: "rest", cityId: c2.id });
+        cmds.push({ cmd: { type: "rest", cityId: c2.id } });
         continue;
       }
       const selfNeed = c2.troops * 0.2;
@@ -1402,7 +1433,10 @@
             Math.floor(hungry.troops * 0.2 + 1500 - hungry.food)
           );
           if (amount > 800) {
-            cmds.push({ type: "move", cityId: c2.id, to: hungry.id, squads: [], gold: 0, food: amount, captives: [] });
+            cmds.push({
+              cmd: { type: "move", cityId: c2.id, to: hungry.id, squads: [], gold: 0, food: amount, captives: [] },
+              note: `${CITY_BY_ID[hungry.id].name} \u7F3A\u7CAE\uFF0C\u81EA ${name} \u8C03\u7CAE ${amount} \u6551\u6D4E`
+            });
             continue;
           }
         }
@@ -1414,26 +1448,29 @@
         if (t >= 500) {
           const squads = buildMoveSquads(gens, t);
           if (squads.length > 0) {
-            cmds.push({ type: "move", cityId: c2.id, to: fwd.id, squads, gold: 0, food: 0, captives: [] });
+            cmds.push({
+              cmd: { type: "move", cityId: c2.id, to: fwd.id, squads, gold: 0, food: 0, captives: [] },
+              note: `\u81EA ${name} \u5411 ${CITY_BY_ID[fwd.id].name} \u524D\u7EBF\u8F93\u9001\u5175\u5458 ${t}`
+            });
             continue;
           }
         }
       }
       if (c2.gold >= 200 && f.develop > 0.3) {
         if (c2.agri <= c2.comm && c2.agri < 95) {
-          cmds.push({ type: "farm", cityId: c2.id });
+          cmds.push({ cmd: { type: "farm", cityId: c2.id }, note: `${name} \u5F00\u57A6\u519C\u4E1A` });
           continue;
         }
         if (c2.comm < 95) {
-          cmds.push({ type: "commerce", cityId: c2.id });
+          cmds.push({ cmd: { type: "commerce", cityId: c2.id }, note: `${name} \u53D1\u5C55\u5546\u4E1A` });
           continue;
         }
       }
       if (c2.troops < maxTroopsOf(c2) * 0.7 && c2.gold >= recruitQuote(c2).cost && c2.loyalty > 35 && c2.food > c2.troops * 0.1) {
-        cmds.push({ type: "recruit", cityId: c2.id });
+        cmds.push({ cmd: { type: "recruit", cityId: c2.id }, note: `${name} \u6269\u519B\u5907\u6218` });
         continue;
       }
-      cmds.push({ type: "rest", cityId: c2.id });
+      cmds.push({ cmd: { type: "rest", cityId: c2.id } });
     }
     return cmds;
   }
@@ -1502,7 +1539,8 @@
     lines.push("\u3010\u4EFB\u52A1\u3011\u4E3A\u6BCF\u5EA7\u57CE\u6C60\u9009\u62E9\u4E00\u6761\u672C\u6708\u6307\u4EE4\uFF0C\u4EE5 JSON \u6570\u7EC4\u8F93\u51FA\uFF0C\u4E0D\u8981\u8F93\u51FA\u4EFB\u4F55\u5176\u4ED6\u6587\u5B57\u3002");
     lines.push("\u6307\u4EE4\u7C7B\u578B\uFF1Afarm(\u5F00\u57A6) commerce(\u5546\u4E1A) recruit(\u5F81\u5175) train(\u8BAD\u7EC3) wall(\u4FEE\u57CE) rest(\u4F11\u517B) move(\u8C03\u52A8,\u9700to;\u53EF\u9009generals/troops/gold/food) attack(\u51FA\u5F81,\u9700to/generals/troops)");
     lines.push("\u89C4\u5219\uFF1A\u6BCF\u57CE\u4E00\u6761\uFF1Bmove/attack \u7684\u76EE\u6807\u5FC5\u987B\u662F\u76F8\u90BB\u57CE\u6C60\uFF1Bmove \u53EA\u80FD\u53D1\u5F80\u5DF1\u65B9\u57CE\uFF0Cattack \u76EE\u6807\u4E0D\u80FD\u662F\u5DF1\u65B9\u57CE\uFF1Bmove \u53EF\u540C\u65F6\u643A\u5E26\u6B66\u5C06(generals)\u3001\u58EB\u5175(troops)\u3001\u91D1\u94B1(gold)\u3001\u7CAE\u8349(food)\uFF0C\u7528\u4E8E\u5411\u524D\u7EBF\u8F93\u9001\u6216\u6551\u6D4E\u7F3A\u7CAE\u57CE\uFF1Bgenerals \u586B\u6B66\u5C06\u59D3\u540D\u6570\u7EC4(\u6700\u591A5\u4EBA,\u987B\u5728\u8BE5\u57CE\uFF1Battack \u53EF\u4E0D\u586B\uFF0C\u5219\u4E3A\u6C11\u5175\u961F\u51FA\u6218)\uFF1Btroops \u4E0D\u8D85\u8FC7\u57CE\u4E2D\u5175\u529B\uFF0Cattack \u8D85\u51FA\u6B66\u5C06\u5E26\u5175\u4E0A\u9650\u7684\u90E8\u5206\u4F1A\u81EA\u52A8\u7F16\u4E3A\u6C11\u5175\u961F(\u6700\u591A1\u652F,\u4E0A\u96502000)\uFF1B\u91D1\u4E0D\u8DB3200\u65F6\u4E0D\u8981\u53D1\u5C55\u3002");
-    lines.push(`\u8F93\u51FA\u683C\u5F0F\u793A\u4F8B\uFF1A[{"city":"\u8BB8\u660C","command":"recruit"},{"city":"\u6D1B\u9633","command":"attack","to":"\u5C0F\u6C9B","generals":["\u5F20\u8FBD","\u5F90\u6643"],"troops":8000},{"city":"\u90BA\u57CE","command":"move","to":"\u6D1B\u9633","food":5000}]`);
+    lines.push(`\u6BCF\u6761\u6307\u4EE4\u9644\u4E00\u4E2A "reason" \u5B57\u6BB5\uFF0C\u7528\u4E00\u53E5\u7B80\u77ED\u4E2D\u6587\u8BF4\u660E\u52A8\u673A\uFF08\u4F1A\u663E\u793A\u5728\u6218\u62A5\u65E5\u5FD7\u4E2D\uFF09\u3002`);
+    lines.push(`\u8F93\u51FA\u683C\u5F0F\u793A\u4F8B\uFF1A[{"city":"\u8BB8\u660C","command":"recruit","reason":"\u6269\u519B\u5907\u6218"},{"city":"\u6D1B\u9633","command":"attack","to":"\u5C0F\u6C9B","generals":["\u5F20\u8FBD","\u5F90\u6643"],"troops":8000,"reason":"\u5C0F\u6C9B\u5175\u5C11\uFF0C\u4E00\u4E3E\u62FF\u4E0B"},{"city":"\u90BA\u57CE","command":"move","to":"\u6D1B\u9633","food":5000,"reason":"\u6D1B\u9633\u7F3A\u7CAE\uFF0C\u7D27\u6025\u6551\u6D4E"}]`);
     lines.push(`\u4F60\u53EA\u80FD\u4E3A\u4EE5\u4E0B\u57CE\u6C60\u4E0B\u4EE4\uFF1A${myCities.map((c2) => CITY_BY_ID[c2.id].name).join("\u3001")}`);
     return lines.join("\n");
   }
@@ -1546,7 +1584,7 @@
           if (squads.length === 0) continue;
           cmd = { type, cityId, to: toId, squads };
         } else {
-          const squads = buildMoveSquads(genIds, troops).filter((s) => s.troops >= 100);
+          const squads = buildMoveSquads(genIds, troops).filter((s) => s.genId != null || s.troops >= 100);
           cmd = {
             type,
             cityId,
@@ -1560,7 +1598,7 @@
       }
       if (!cmd) continue;
       if (validateCommand(state, cmd, fid) === null) {
-        cmds.push(cmd);
+        cmds.push({ cmd, note: typeof d.reason === "string" && d.reason.trim() ? d.reason.trim().slice(0, 60) : void 0 });
         used.add(cityId);
       }
     }
@@ -1606,9 +1644,9 @@
       const prompt = buildPrompt(state, fid);
       const decisions = await requestDecisions(cfg, prompt, fetchFn);
       const cmds = decisionsToCommands(state, fid, decisions);
-      const covered = new Set(cmds.map((c2) => c2.cityId));
+      const covered = new Set(cmds.map((p) => p.cmd.cityId));
       for (const rc of planTurn(state, fid)) {
-        if (!covered.has(rc.cityId)) cmds.push(rc);
+        if (!covered.has(rc.cmd.cityId)) cmds.push(rc);
       }
       return { commands: cmds, usedLLM: true };
     } catch (e) {
@@ -1738,15 +1776,18 @@
     <p>\xB7 <b>\u8C03\u52A8</b>\uFF1A\u5411\u76F8\u90BB\u5DF1\u65B9\u57CE\u8F93\u9001\u6B66\u5C06\u3001\u58EB\u5175\u3001\u91D1\u94B1\u3001\u7CAE\u8349\uFF0C\u8FD8\u53EF\u62BC\u9001\u4FD8\u864F\uFF1B\u6ED1\u6746\u62D6\u62FD\u5373\u53EF\uFF0C\u5373\u523B\u5230\u8FBE<br>
     \xB7 \u51FA\u5F81\u6700\u591A <b>5 \u652F\u961F\u4F0D</b>\uFF0C\u6BCF\u961F\u5175\u529B\u4E0D\u80FD\u8D85\u8FC7\u5C06\u9886\u7684<b>\u5E26\u5175\u4E0A\u9650</b>\uFF08= 1200 + \u7EDF\u5E05 \xD7 25 + \u7B49\u7EA7 \xD7 350\uFF09<br>
     \xB7 \u53EF\u4EE5\u6D3E\u65E0\u6B66\u5C06\u7684<b>\u6C11\u5175\u961F</b>\uFF08\u4E0A\u9650 2000\uFF09\uFF1A\u653B\u65B9\u6700\u591A 1 \u652F\uFF0C\u5B88\u65B9\u6700\u591A 2 \u652F<br>
-    \xB7 \u57CE\u9632\u4E3A\u5B88\u65B9\u63D0\u4F9B\u51CF\u4F24\uFF08\u6700\u9AD8 35%\uFF09\uFF1B\u8BAD\u7EC3\u5EA6\u63D0\u5347\u5168\u519B\u653B\u9632\uFF1B\u5B88\u519B\u7531\u57CE\u5185\u6B66\u5C06\u81EA\u52A8\u7F16\u961F\u5E94\u6218</p>
+    \xB7 \u57CE\u9632\u4E3A\u5B88\u65B9\u63D0\u4F9B\u51CF\u4F24\uFF08\u6700\u9AD8 35%\uFF09\uFF1B\u8BAD\u7EC3\u5EA6\u63D0\u5347\u5168\u519B\u653B\u9632\uFF1B\u5B88\u519B\u7531\u57CE\u5185\u6B66\u5C06\u81EA\u52A8\u7F16\u961F\u5E94\u6218<br>
+    \xB7 \u5B88\u65B9\u82E5\u65E0\u5176\u4ED6\u5DF1\u65B9\u57CE\u53EF\u9000\uFF0C\u5219<b>\u65E0\u6CD5\u64A4\u9000</b>\uFF0C\u552F\u6709\u80CC\u6C34\u4E00\u6218</p>
     <p class="help-h">\u25A0 \u6B66\u5C06\u7B49\u7EA7\u4E0E\u5FE0\u8BDA</p>
     <p>\xB7 \u6218\u6597\u5F97\u7ECF\u9A8C\uFF1A\u53C2\u6218 +10\uFF0C\u6BCF\u6B7C\u706D\u4E00\u961F +25\uFF0C\u83B7\u80DC +15\uFF1B\u6EE1 100 \u5347 1 \u7EA7\uFF08\u6700\u9AD8 10 \u7EA7\uFF09\uFF0C\u7B49\u7EA7\u63D0\u5347\u5E26\u5175\u4E0A\u9650\u4E0E\u6218\u6597\u80FD\u529B<br>
     \xB7 \u90E8\u961F\u88AB\u6B7C\u706D\u540E\u6B66\u5C06<b>\u4E0D\u4F1A\u9635\u4EA1\uFF0C\u5FC5\u5B9A\u88AB\u64D2</b>\uFF0C\u5173\u62BC\u5728\u4EA4\u6218\u4E4B\u57CE\u4E2D<br>
-    \xB7 \u4FD8\u864F\u53EF\u88AB<b>\u62DB\u964D</b>\uFF08\u5FE0\u8BDA\u8D8A\u4F4E\u3001\u6545\u4E3B\u5DF2\u4EA1\u3001\u5DF1\u65B9\u541B\u4E3B\u9B45\u529B\u8D8A\u9AD8\uFF0C\u6210\u529F\u7387\u8D8A\u9AD8\uFF1B\u541B\u4E3B\u5B81\u6B7B\u4E0D\u964D\uFF09/ <b>\u91CA\u653E</b> / <b>\u65A9\u9996</b>\uFF08\u6FC0\u6012\u5176\u6545\u52BF\u529B\uFF0C\u4F7F\u5176\u6B66\u5C06\u540C\u4EC7\u654C\u5FFE\uFF09<br>
+    \xB7 <b>\u541B\u4E3B\u88AB\u64D2\u6216\u88AB\u65A9\u9996\uFF0C\u52BF\u529B\u5373\u523B\u706D\u4EA1</b>\uFF1A\u5176\u4F59\u57CE\u6C60\u4E0E\u57CE\u5185\u6B66\u5C06\u5168\u90E8\u5F52\u9644\u80DC\u5229\u65B9<br>
+    \xB7 \u4FD8\u864F\u53EF\u88AB<b>\u62DB\u964D</b>\uFF08\u5FE0\u8BDA\u8D8A\u4F4E\u3001\u6545\u4E3B\u5DF2\u4EA1\u3001\u5DF1\u65B9\u541B\u4E3B\u9B45\u529B\u8D8A\u9AD8\uFF0C\u6210\u529F\u7387\u8D8A\u9AD8\uFF09/ <b>\u91CA\u653E</b> / <b>\u65A9\u9996</b>\uFF08\u6FC0\u6012\u5176\u6545\u52BF\u529B\uFF0C\u4F7F\u5176\u6B66\u5C06\u540C\u4EC7\u654C\u5FFE\uFF09<br>
     \xB7 \u57CE\u82E5\u88AB\u653B\u9677\uFF0C\u57CE\u4E2D\u4FD8\u864F\u7531\u653B\u65B9\u63A5\u7BA1\uFF1A\u539F\u5C5E\u653B\u65B9\u7684\u5C06\u88AB<b>\u8425\u6551\u5F52\u961F</b>\uFF0C\u5176\u4F59\u8F6C\u62BC\u5F52\u653B\u65B9<br>
+    \xB7 \u5B88\u65B9\u6700\u540E\u4E00\u57CE\u9677\u843D\u65F6\uFF0C\u64A4\u9000/\u5E78\u5B58/\u7559\u5B88\u7684\u6B66\u5C06\u65E0\u8DEF\u53EF\u9000\uFF0C<b>\u5168\u4F53\u88AB\u64D2</b>\uFF08\u6E38\u620F\u4E2D\u6CA1\u6709\u4E0B\u91CE\uFF09<br>
     \xB7 \u57CE\u4E2D\u6C11\u5FE0\u9AD8\uFF0C\u6B66\u5C06\u5FE0\u8BDA\u7F13\u5347\uFF1B\u6C11\u5FE0\u592A\u4F4E\u6216\u6210\u4E3A\u4FD8\u864F\uFF0C\u5FE0\u8BDA\u6E10\u964D</p>
     <p class="help-h">\u25A0 \u64CD\u4F5C\u63D0\u793A</p>
-    <p>\u8C03\u5175\u3001\u8FD0\u7CAE\u7B49\u6570\u91CF\u53EF\u7528<b>\u6ED1\u6746\u62D6\u62FD</b>\uFF0C\u4E5F\u53EF\u70B9\u53F3\u4FA7\u6570\u5B57\u76F4\u63A5\u8F93\u5165\uFF1B\u7F16\u961F\u4F1A\u81EA\u52A8\u6309\u5E26\u5175\u4E0A\u9650\u5206\u914D\u5E76\u5B9E\u65F6\u9884\u89C8\u3002</p>
+    <p>\u8C03\u5175\u3001\u8FD0\u7CAE\u7B49\u6570\u91CF\u53EF\u7528<b>\u6ED1\u6746\u62D6\u62FD</b>\uFF0C\u4E5F\u53EF\u70B9\u53F3\u4FA7\u6570\u5B57\u76F4\u63A5\u8F93\u5165\uFF1B\u8C03\u52A8\u65F6\u6B66\u5C06 0 \u5175\u4E5F\u53EF\u6210\u884C\uFF08\u8F7B\u9A91\u7B80\u4ECE\uFF09\uFF0C\u53EA\u8981\u4EFB\u610F\u6B66\u5C06/\u7269\u8D44\u6709\u79FB\u52A8\u5373\u6709\u6548\uFF1B\u7F16\u961F\u4F1A\u81EA\u52A8\u6309\u5E26\u5175\u4E0A\u9650\u5206\u914D\u5E76\u5B9E\u65F6\u9884\u89C8\u3002</p>
   </div>
   <div class="btn-row"><button class="btn primary" id="help-ok">\u660E\u767D\u4E86</button></div>`;
     const box = showModal(html);
@@ -1895,14 +1936,19 @@
     }
     renderLog() {
       const state = this.hooks.getState();
-      const bar = document.getElementById("log-bar");
-      bar.textContent = state.log.length ? state.log[state.log.length - 1] : "";
+      const el = document.getElementById("log-panel");
+      el.innerHTML = state.log.slice(-150).map((line) => {
+        const think = line.startsWith("\u3010\u519B\u5E08");
+        return `<div class="log-item${think ? " think" : ""}">${esc(line)}</div>`;
+      }).join("");
+      el.scrollTop = el.scrollHeight;
     }
     renderPanel() {
       var _a, _b, _c, _d;
       const panel = document.getElementById("side-panel");
       if (!this.selected) {
-        panel.classList.add("hidden");
+        panel.innerHTML = `<div class="note panel-tip">\u70B9\u51FB\u5730\u56FE\u4E0A\u7684\u57CE\u6C60<br>\u67E5\u770B\u8BE6\u60C5\u5E76\u4E0B\u8FBE\u6307\u4EE4</div>`;
+        panel.classList.remove("hidden");
         return;
       }
       const state = this.hooks.getState();
@@ -2097,7 +2143,7 @@
       box.querySelector("#tp-cancel").addEventListener("click", () => closeModal());
       box.querySelector("#tp-ok").addEventListener("click", () => {
         const troops = Number(slider.value);
-        const squads = (kind === "attack" ? buildAttackSquads(state, [...genSel], troops) : buildMoveSquads([...genSel], troops)).filter((s) => s.troops >= 100);
+        const squads = (kind === "attack" ? buildAttackSquads(state, [...genSel], troops) : buildMoveSquads([...genSel], troops)).filter((s) => s.genId != null ? kind === "move" ? s.troops >= 0 : s.troops >= 100 : s.troops >= 100);
         let cmd;
         if (kind === "attack") {
           if (squads.length === 0) {
@@ -2157,6 +2203,7 @@
       const to = (_d = (_c = CITY_BY_ID[setup.toCityId]) == null ? void 0 : _c.name) != null ? _d : "";
       this.log(`\u2014\u2014 ${from} \u2192 ${to} \xB7 \u5408\u6218\u5F00\u59CB \u2014\u2014`);
       if (setup.wallBonus > 0.12) this.log(`${to} \u57CE\u9632\u575A\u56FA\uFF0C\u5B88\u65B9\u83B7\u5F97\u51CF\u4F24\u3002`);
+      if (!setup.defCanRetreat) this.log(`\u5B88\u65B9\u5DF2\u65E0\u751F\u8DEF\u53EF\u9000\uFF0C\u80CC\u6C34\u4E00\u6218\uFF01`);
       this.show();
       this.startRenderLoop();
       return new Promise((resolve) => {
@@ -2217,6 +2264,7 @@
     }
     /* ---------------- 玩家指令 ---------------- */
     showCommands(u) {
+      const b = this.battle;
       this.pickMode = "none";
       this.pendingSkill = null;
       let html = `<span style="color:#e8c88a;padding:4px 8px">\u3010${esc(u.name)}\u3011\u7684\u884C\u52A8\uFF1A</span>`;
@@ -2226,9 +2274,11 @@
         const disabled = u.qi < sk.qiCost ? " disabled" : "";
         html += `<button class="btn" data-act="skill" data-skill="${sid}"${disabled}>${esc(sk.name)}(${sk.qiCost}\u6C14)</button>`;
       }
+      const noRetreat = u.side === "def" && !b.defCanRetreat;
       html += `<button class="btn" data-act="defend">\u9632\u5FA1</button>`;
-      html += `<button class="btn" data-act="retreat">\u64A4\u9000</button>`;
+      html += `<button class="btn" data-act="retreat"${noRetreat ? " disabled" : ""}>\u64A4\u9000</button>`;
       html += `<button class="btn" data-act="auto">\u81EA\u52A8</button>`;
+      if (noRetreat) html += `<span style="color:#e8a85a;padding:4px 8px">\u65E0\u8DEF\u53EF\u9000\uFF0C\u80CC\u6C34\u4E00\u6218\uFF01</span>`;
       this.cmdBar.innerHTML = html;
       this.cmdBar.classList.remove("hidden");
       this.cmdBar.querySelectorAll("button").forEach((btn) => {
@@ -2633,10 +2683,11 @@
           } else {
             cmds = planTurn(state, f.id);
           }
-          for (const cmd of cmds) {
+          for (const { cmd, note } of cmds) {
             if (this.gameOverCheckNeeded()) return;
             const res = executeCommand(state, cmd, f.id);
             if (!res.ok) continue;
+            if (note) pushLog(state, `\u3010\u519B\u5E08\xB7${f.name}\u3011${note}`);
             if (res.battle) {
               const setup = res.battle;
               let result;

@@ -525,15 +525,14 @@ function buildAttackSquads(state, genIds, totalTroops) {
   return squads;
 }
 function buildMoveSquads(genIds, totalTroops) {
-  const gens = genIds.slice(0, MAX_SQUADS - 1);
+  const gens = genIds.slice(0, MAX_SQUADS);
   const total = Math.max(0, Math.round(totalTroops));
   if (gens.length === 0) return total > 0 ? [{ genId: null, troops: total }] : [];
   const per = Math.floor(total / gens.length);
-  const squads = gens.map((g, i) => ({
+  return gens.map((g, i) => ({
     genId: g,
     troops: per + (i === 0 ? total - per * gens.length : 0)
-  })).filter((s) => s.troops > 0);
-  return squads;
+  }));
 }
 function bestStat(city, stat) {
   let best = 40;
@@ -578,7 +577,8 @@ function validateCommand(state, cmd, fid) {
       let total = 0;
       const seen = /* @__PURE__ */ new Set();
       for (const s of cmd.squads) {
-        if (s.troops < 100) return "\u6BCF\u961F\u5175\u529B\u81F3\u5C11100";
+        if (s.troops < 0) return "\u5175\u529B\u4E0D\u80FD\u4E3A\u8D1F";
+        if (s.genId == null && s.troops < 100) return "\u65E0\u6B66\u5C06\u961F\u4F0D\u5175\u529B\u81F3\u5C11100";
         total += s.troops;
         if (s.genId != null) {
           if (!city.generals.includes(s.genId)) return "\u6240\u9009\u6B66\u5C06\u4E0D\u5728\u57CE\u4E2D";
@@ -593,7 +593,7 @@ function validateCommand(state, cmd, fid) {
       for (const g of cmd.captives) {
         if (!city.captives.some((cp) => cp.genId === g)) return "\u6240\u9009\u4FD8\u864F\u4E0D\u5728\u57CE\u4E2D";
       }
-      if (total + Math.floor(cmd.gold) + Math.floor(cmd.food) + cmd.captives.length === 0) return "\u6CA1\u6709\u8981\u8C03\u52A8\u7684\u5185\u5BB9";
+      if (seen.size + total + Math.floor(cmd.gold) + Math.floor(cmd.food) + cmd.captives.length === 0) return "\u6CA1\u6709\u8981\u8C03\u52A8\u7684\u5185\u5BB9";
       return null;
     }
     case "attack": {
@@ -628,7 +628,9 @@ function validateCommand(state, cmd, fid) {
   }
 }
 function buildDefenseSquads(state, city) {
-  const gens = [...city.generals].sort((a, b) => GENERALS[b].lead + GENERALS[b].war - (GENERALS[a].lead + GENERALS[a].war)).slice(0, MAX_SQUADS);
+  const rulerId = city.owner ? factionById(state, city.owner).ruler : -1;
+  const rank = (g) => GENERALS[g].lead + GENERALS[g].war + (g === rulerId ? -1e3 : 0);
+  const gens = [...city.generals].sort((a, b) => rank(b) - rank(a)).slice(0, MAX_SQUADS);
   const total = Math.max(0, Math.round(city.troops));
   if (gens.length === 0) {
     const n = Math.min(DEF_MILITIA_MAX, Math.max(1, Math.ceil(total / 4e3) || 1));
@@ -763,7 +765,9 @@ function executeCommand(state, cmd, fid) {
           defenders,
           wallBonus: Math.min(0.35, 0.1 + to.wall / 250),
           atkTrain: city.train,
-          defTrain: to.train
+          defTrain: to.train,
+          // 守方没有其他己方城可退时背水一战
+          defCanRetreat: to.owner ? nearestOwnedCity(state, to.id, to.owner) != null : false
         }
       };
     }
@@ -784,6 +788,33 @@ function recruitChance(state, fid, cp) {
   let p = 0.78 - gs.loyalty * 6e-3 + (rulerCha - g.cha) * 2e-3;
   if (!fromF) p += 0.2;
   return clamp(p, 0.05, 0.95);
+}
+function collapseFaction(state, fid, winnerFid) {
+  const f = state.factions.find((x) => x.id === fid && x.alive);
+  if (!f || fid === winnerFid) return;
+  f.alive = false;
+  const winName = winnerFid ? factionById(state, winnerFid).name : null;
+  for (const c2 of factionCities(state, fid)) {
+    c2.owner = winnerFid;
+    if (winnerFid) {
+      c2.captives = c2.captives.filter((cp) => {
+        if (cp.from === winnerFid) {
+          c2.generals.push(cp.genId);
+          return false;
+        }
+        return true;
+      });
+      for (const g of c2.generals) {
+        const gs = state.genStates[g];
+        if (gs) gs.loyalty = 55;
+      }
+    }
+  }
+  if (winName) {
+    pushLog(state, `\u3010\u53D8\u5929\u3011${f.name} \u541B\u4E3B\u6709\u5931\uFF0C\u4E3E\u65CF\u5F52\u9644 ${winName}\uFF0C${f.name} \u52BF\u529B\u706D\u4EA1\uFF01`);
+  } else {
+    pushLog(state, `\u3010\u8BA3\u544A\u3011${f.name} \u541B\u4E3B\u6709\u5931\uFF0C\u52BF\u529B\u571F\u5D29\u74E6\u89E3\u2026\u2026`);
+  }
 }
 function captiveAction(state, fid, cityId, genId, action) {
   const f = factionById(state, fid);
@@ -812,47 +843,30 @@ function captiveAction(state, fid, cityId, genId, action) {
     return { ok: false, msg: `${g.name} \u62D2\u7EDD\u6295\u964D\u3002\uFF08\u5176\u5FC3\u5FD7\u5DF2\u52A8\u6447\uFF0C\u4E0B\u6708\u53EF\u518D\u8BD5\uFF09` };
   }
   if (action === "release") {
-    city.captives.splice(idx, 1);
     const fromF2 = cp.from ? state.factions.find((x) => x.id === cp.from && x.alive) : null;
-    if (fromF2) {
-      const home = factionCities(state, fromF2.id)[0];
-      if (home) {
-        home.generals.push(genId);
-        gs.loyalty = Math.min(100, gs.loyalty + 10);
-        pushLog(state, `${f.name} \u91CA\u653E\u4E86 ${g.name}\uFF0C\u5176\u56DE\u5230 ${fromF2.name}\u3002`);
-        return { ok: true, msg: `${g.name} \u88AB\u91CA\u653E\uFF0C\u56DE\u5230\u4E86\u6545\u4E3B\u5904\u3002` };
-      }
+    const home = fromF2 ? factionCities(state, fromF2.id)[0] : null;
+    if (!home) {
+      return { ok: false, msg: `${g.name} \u6545\u4E3B\u5DF2\u4EA1\uFF0C\u65E0\u5904\u53EF\u53BB\uFF0C\u65E0\u6CD5\u91CA\u653E\u3002\uFF08\u53EF\u62DB\u964D\u6216\u65A9\u9996\uFF09` };
     }
-    delete state.genStates[genId];
-    pushLog(state, `${f.name} \u91CA\u653E\u4E86 ${g.name}\uFF0C\u5176\u4ECE\u6B64\u9690\u5C45\u4E0D\u4ED5\u3002`);
-    return { ok: true, msg: `${g.name} \u88AB\u91CA\u653E\uFF0C\u4ECE\u6B64\u9690\u5C45\u4E0D\u4ED5\u3002` };
+    city.captives.splice(idx, 1);
+    home.generals.push(genId);
+    gs.loyalty = Math.min(100, gs.loyalty + 10);
+    pushLog(state, `${f.name} \u91CA\u653E\u4E86 ${g.name}\uFF0C\u5176\u56DE\u5230 ${fromF2.name}\u3002`);
+    return { ok: true, msg: `${g.name} \u88AB\u91CA\u653E\uFF0C\u56DE\u5230\u4E86\u6545\u4E3B\u5904\u3002` };
   }
   city.captives.splice(idx, 1);
   delete state.genStates[genId];
   pushLog(state, `\u3010\u65A9\u9996\u3011${f.name} \u5904\u6B7B\u4E86 ${g.name}\uFF01`);
   const fromF = cp.from ? state.factions.find((x) => x.id === cp.from && x.alive) : null;
   if (fromF) {
-    const wasRuler = fromF.ruler === genId;
-    for (const c2 of factionCities(state, fromF.id)) {
-      for (const gid of c2.generals) {
-        const s2 = state.genStates[gid];
-        if (s2) s2.loyalty = Math.min(100, s2.loyalty + (wasRuler ? 15 : 8));
-      }
-    }
-    if (wasRuler) {
-      let heir = 0, best = -1;
+    if (fromF.ruler === genId) {
+      collapseFaction(state, fromF.id, fid);
+    } else {
       for (const c2 of factionCities(state, fromF.id)) {
         for (const gid of c2.generals) {
-          if (GENERALS[gid].lead > best) {
-            best = GENERALS[gid].lead;
-            heir = gid;
-          }
+          const s2 = state.genStates[gid];
+          if (s2) s2.loyalty = Math.min(100, s2.loyalty + 8);
         }
-      }
-      if (heir) {
-        fromF.ruler = heir;
-        state.genStates[heir].loyalty = 100;
-        pushLog(state, `${GENERALS[heir].name} \u7EE7\u627F\u4E86 ${fromF.name} \u7684\u57FA\u4E1A\u3002`);
       }
     }
   }
@@ -894,18 +908,22 @@ function applyBattleResult(state, setup, result) {
     for (const u of result.survivors.def) {
       if (u.genId == null) continue;
       const refuge = defFid ? nearestOwnedCity(state, to.id, defFid) : null;
-      if (refuge) refuge.generals.push(u.genId);
-      else delete state.genStates[u.genId];
+      if (refuge) {
+        refuge.generals.push(u.genId);
+      } else {
+        to.captives.push({ genId: u.genId, from: defFid, tried: false });
+        captures.push(u.genId);
+        pushLog(state, `\u3010\u4FD8\u864F\u3011${GENERALS[u.genId].name} \u65E0\u8DEF\u53EF\u9000\uFF0C\u88AB ${atkF.name} \u64D2\u83B7\uFF01`);
+      }
     }
     for (const g of [...to.generals]) {
-      if (winF && rng.chance(captureChance(g) * 0.6)) {
+      const refuge = defFid ? nearestOwnedCity(state, to.id, defFid) : null;
+      if (refuge && !rng.chance(captureChance(g) * 0.6)) {
+        refuge.generals.push(g);
+      } else {
         to.captives.push({ genId: g, from: defFid, tried: false });
         captures.push(g);
-        pushLog(state, `\u3010\u4FD8\u864F\u3011${GENERALS[g].name} \u5728\u57CE\u7834\u65F6\u88AB ${winF.name} \u64D2\u83B7\uFF01`);
-      } else {
-        const refuge = defFid ? nearestOwnedCity(state, to.id, defFid) : null;
-        if (refuge) refuge.generals.push(g);
-        else delete state.genStates[g];
+        pushLog(state, `\u3010\u4FD8\u864F\u3011${GENERALS[g].name} \u5728\u57CE\u7834\u65F6\u88AB ${atkF.name} \u64D2\u83B7\uFF01`);
       }
     }
     to.generals = [];
@@ -935,6 +953,10 @@ function applyBattleResult(state, setup, result) {
     for (const u of result.survivors.atk) if (u.genId != null) from.generals.push(u.genId);
     to.wall = Math.max(5, to.wall - 8);
     pushLog(state, `\u3010\u6218\u62A5\u3011${toName} \u5B88\u4F4F\u4E86${atkF.name}\u7684\u8FDB\u653B\uFF01`);
+  }
+  for (const g of captures) {
+    const rf = state.factions.find((x) => x.alive && x.ruler === g);
+    if (rf) collapseFaction(state, rf.id, winFid);
   }
   for (const f of state.factions) {
     if (!f.alive) continue;
@@ -1034,6 +1056,7 @@ function createBattle(setup) {
     over: false,
     winner: null,
     wallBonus: setup.wallBonus,
+    defCanRetreat: setup.defCanRetreat,
     atkFactionId: setup.attackerFactionId,
     defFactionId: setup.defenderFactionId
   };
@@ -1179,7 +1202,9 @@ function aiChooseAction(b, u) {
   const enemies = enemiesOf(b, u.side);
   const allies = alliesOf(b, u.side);
   const weakest = [...enemies].sort((a, b2) => a.troops - b2.troops)[0];
-  if (u.troops < u.maxTroops * 0.18 && rng.chance(0.35)) return { type: "retreat" };
+  if (u.troops < u.maxTroops * 0.18 && rng.chance(0.35) && (u.side === "atk" || b.defCanRetreat)) {
+    return { type: "retreat" };
+  }
   const healSkill = u.skills.find((s) => SKILLS[s].kind === "heal");
   if (healSkill && u.qi >= SKILLS[healSkill].qiCost) {
     const hurtAlly = [...allies].sort((a, b2) => a.troops / a.maxTroops - b2.troops / b2.maxTroops)[0];
@@ -1250,7 +1275,9 @@ function planTurn(state, fid) {
       const ratio = avail / Math.max(1, defPower);
       const threshold = 1.15 - f.aggression * 0.35;
       if (ratio > threshold) {
-        const gens = [...c2.generals].sort((a, b) => genCombatRank(b) - genCombatRank(a)).slice(0, 5);
+        const pool = [...c2.generals].sort((a, b) => genCombatRank(b) - genCombatRank(a));
+        const nonRuler = pool.filter((g) => g !== f.ruler);
+        const gens = (nonRuler.length > 0 ? nonRuler : pool).slice(0, 5);
         plans.push({ from: c2, to: e, score: ratio * rng.range(0.9, 1.15), generals: gens, troops: Math.min(avail, 2e4) });
       }
     }
