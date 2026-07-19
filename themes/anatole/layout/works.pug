@@ -1,0 +1,43 @@
+extends partial/layout
+
+block site_title
+  != page.title + " · " + config.title
+
+block head_extra
+  link(rel="stylesheet", href= url_for('css/works.css'))
+
+block content
+  - var slides = works_slides()
+  .autopagerize_page_element: .content: .works.animated.fadeInDown
+    header.works-head
+      .works-headline
+        h1.works-title= page.title
+        span.works-count= slides.length + ' 件展品'
+      p.works-sub 作品橱窗 · 点击任意橱窗，在新窗口打开
+      if page.content && page.content.trim()
+        .works-intro!= page.content
+    if slides.length
+      .works-grid
+        each s, i in slides
+          a.work(href= url_for('/works/' + s.slug + '/'), target="_blank", rel="noopener", style="--hue:" + s.hue)
+            .work-screen
+              if s.cover
+                img.work-cover(src= url_for(s.cover), alt= s.title, loading="lazy")
+              span.work-num= ('0' + (i + 1)).slice(-2)
+              span.work-play
+                i.fa-solid.fa-arrow-up-right-from-square
+                | 新窗口打开
+              if i === 0
+                span.work-now NEW
+            .work-body
+              h2.work-title= s.title
+              if s.desc
+                p.work-desc= s.desc
+              .work-meta
+                i.fa-regular.fa-calendar
+                time= date(s.date, 'YYYY-MM-DD')
+                span.work-badge SLIDES
+                each t in s.tags
+                  span.work-tag= t
+    else
+      p.works-empty 橱窗暂无展品 — 在 source/works/ 下放入一个含 index.html 的目录即可自动上架。

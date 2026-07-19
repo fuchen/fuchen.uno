@@ -11,6 +11,11 @@
     //-   else
     //-     a(href="/about")= __('About')
     li
+      if is_current('works')
+        a.current(href="/works/")= __('Works')
+      else
+        a(href="/works/")= __('Works')
+    li
       if is_archive()
         a.current(href="/archives")= __('Archive')
       else

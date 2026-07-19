@@ -1,0 +1,234 @@
+/* ===== Works · 作品橱窗 ===== */
+.works {
+  margin: 30px;
+}
+
+.works-head {
+  margin-bottom: 28px;
+}
+
+.works-headline {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+.works-title {
+  margin: 0;
+  text-transform: uppercase;
+  font-size: 30px;
+  letter-spacing: 5px;
+  line-height: 1;
+}
+
+.works-count {
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: #999;
+  white-space: nowrap;
+}
+
+.works-sub {
+  margin: 12px 0 0;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: #999;
+}
+
+.works-intro {
+  margin-top: 14px;
+  color: #555;
+}
+
+/* ---- 橱窗网格 ---- */
+.works-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 22px;
+}
+
+/* ---- 一扇橱窗 ---- */
+a.work,
+a.work:link,
+a.work:visited {
+  display: block;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  color: inherit;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+a.work:hover,
+a.work:active {
+  transform: translateY(-4px);
+  border-color: #ddd;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.1);
+}
+
+/* 橱窗玻璃：射灯光晕 + 程序化渐变 */
+.work-screen {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background:
+    radial-gradient(70% 55% at 50% 0%, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0) 70%),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 4px),
+    radial-gradient(130% 120% at 15% 0%,
+      hsla(var(--hue, 216), 72%, 64%, 1) 0%,
+      hsla(calc(var(--hue, 216) + 45), 62%, 46%, 1) 52%,
+      hsla(calc(var(--hue, 216) + 90), 58%, 30%, 1) 100%);
+  transition: filter 0.25s ease;
+}
+
+a.work:hover .work-screen {
+  filter: brightness(1.08) saturate(1.1);
+}
+
+/* 玻璃斜向反光 */
+.work-screen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 22%, rgba(255, 255, 255, 0.16) 40%, rgba(255, 255, 255, 0.05) 52%, transparent 68%);
+  pointer-events: none;
+}
+
+.work-cover {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 橱窗编号 */
+.work-num {
+  position: absolute;
+  left: 14px;
+  bottom: -6px;
+  font-family: "Helvetica Neue", "Work Sans", sans-serif;
+  font-size: clamp(40px, 6vw, 64px);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -2px;
+  color: rgba(255, 255, 255, 0.3);
+  pointer-events: none;
+}
+
+/* 悬停浮现的打开按钮 */
+.work-play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -40%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 2px;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+a.work:hover .work-play {
+  opacity: 1;
+  transform: translate(-50%, -50%);
+}
+
+/* 最新作品角标 */
+.work-now {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  font-size: 10px;
+  letter-spacing: 2px;
+}
+
+.work-now::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: #ff5a5a;
+}
+
+/* ---- 信息区 ---- */
+.work-body {
+  padding: 14px 16px 16px;
+}
+
+.work-title {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  letter-spacing: 1px;
+  color: #222;
+}
+
+.work-desc {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: #777;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.work-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: #999;
+}
+
+.work-badge {
+  padding: 1px 6px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: #aaa;
+}
+
+.work-tag {
+  color: #4786d6;
+}
+
+.work-tag::before {
+  content: "#";
+  opacity: 0.6;
+}
+
+.works-empty {
+  color: #999;
+  font-size: 14px;
+}
+
+@media (max-width: 700px) {
+  .works {
+    margin: 20px 16px;
+  }
+  .works-grid {
+    grid-template-columns: 1fr;
+  }
+}
