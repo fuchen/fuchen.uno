@@ -540,10 +540,10 @@ function bestStat(city, stat) {
   return best;
 }
 function maxTroopsOf(city) {
-  return CITY_BY_ID[city.id].pop * 400;
+  return CITY_BY_ID[city.id].pop * 1e3;
 }
 function recruitQuote(city) {
-  const add = Math.min(400 + bestStat(city, "cha") * 8, maxTroopsOf(city) - city.troops);
+  const add = Math.min(400 + bestStat(city, "cha") * 8 + CITY_BY_ID[city.id].pop * 60, maxTroopsOf(city) - city.troops);
   return { add: Math.max(0, Math.round(add)), cost: Math.round(150 + add * 0.15) };
 }
 function validateCommand(state, cmd, fid) {
@@ -1278,7 +1278,7 @@ function planTurn(state, fid) {
         const pool = [...c2.generals].sort((a, b) => genCombatRank(b) - genCombatRank(a));
         const nonRuler = pool.filter((g) => g !== f.ruler);
         const gens = (nonRuler.length > 0 ? nonRuler : pool).slice(0, 5);
-        plans.push({ from: c2, to: e, score: ratio * rng.range(0.9, 1.15), generals: gens, troops: Math.min(avail, 2e4) });
+        plans.push({ from: c2, to: e, score: ratio * rng.range(0.9, 1.15), generals: gens, troops: Math.min(avail, 2e4), ratio });
       }
     }
   }
@@ -1291,7 +1291,10 @@ function planTurn(state, fid) {
     if (busySrc.has(p.from.id) || busyTgt.has(p.to.id)) continue;
     const squads = buildAttackSquads(state, p.generals, Math.floor(p.troops));
     if (squads.length === 0) continue;
-    cmds.push({ type: "attack", cityId: p.from.id, to: p.to.id, squads });
+    cmds.push({
+      cmd: { type: "attack", cityId: p.from.id, to: p.to.id, squads },
+      note: `\u5175\u529B ${Math.round(p.ratio * 10) / 10} \u500D\u4E8E ${CITY_BY_ID[p.to.id].name} \u5B88\u519B\uFF0C\u5175\u53D1 ${CITY_BY_ID[p.to.id].name}\uFF01`
+    });
     busySrc.add(p.from.id);
     busyTgt.add(p.to.id);
     attacksLeft--;
@@ -1299,37 +1302,38 @@ function planTurn(state, fid) {
   for (const c2 of myCities) {
     if (busySrc.has(c2.id)) continue;
     const isFront = frontier.has(c2.id);
+    const name = CITY_BY_ID[c2.id].name;
     if (isFront) {
       const threatened = neighborsOf(state, c2.id).some((n) => n.owner !== fid && n.troops > c2.troops * 1.2);
       if (threatened) {
         if (c2.troops < maxTroopsOf(c2) && c2.gold >= recruitQuote(c2).cost && c2.loyalty > 35 && c2.food > c2.troops * 0.1) {
-          cmds.push({ type: "recruit", cityId: c2.id });
+          cmds.push({ cmd: { type: "recruit", cityId: c2.id }, note: `${name} \u544A\u6025\uFF0C\u7D27\u6025\u5F81\u5175\u5907\u6218` });
           continue;
         }
         if (c2.wall < 85 && c2.gold >= 200) {
-          cmds.push({ type: "wall", cityId: c2.id });
+          cmds.push({ cmd: { type: "wall", cityId: c2.id }, note: `${name} \u544A\u6025\uFF0C\u52A0\u56FA\u57CE\u9632` });
           continue;
         }
-        cmds.push({ type: "rest", cityId: c2.id });
+        cmds.push({ cmd: { type: "rest", cityId: c2.id } });
         continue;
       }
       if (c2.troops < maxTroopsOf(c2) * 0.8 && c2.gold >= recruitQuote(c2).cost && c2.loyalty > 35 && c2.food > c2.troops * 0.1) {
-        cmds.push({ type: "recruit", cityId: c2.id });
+        cmds.push({ cmd: { type: "recruit", cityId: c2.id }, note: `${name} \u6269\u519B\u5907\u6218` });
         continue;
       }
       if (c2.train < 70 && c2.troops >= 3e3 && c2.gold >= 100) {
-        cmds.push({ type: "train", cityId: c2.id });
+        cmds.push({ cmd: { type: "train", cityId: c2.id }, note: `${name} \u64CD\u7EC3\u58EB\u5352` });
         continue;
       }
       if (c2.wall < 60 && c2.gold >= 200) {
-        cmds.push({ type: "wall", cityId: c2.id });
+        cmds.push({ cmd: { type: "wall", cityId: c2.id }, note: `${name} \u52A0\u56FA\u57CE\u9632` });
         continue;
       }
       if (c2.gold >= 200 && (c2.agri < 90 || c2.comm < 90)) {
-        cmds.push(c2.agri <= c2.comm ? { type: "farm", cityId: c2.id } : { type: "commerce", cityId: c2.id });
+        cmds.push(c2.agri <= c2.comm ? { cmd: { type: "farm", cityId: c2.id }, note: `${name} \u5F00\u57A6\u519C\u4E1A` } : { cmd: { type: "commerce", cityId: c2.id }, note: `${name} \u53D1\u5C55\u5546\u4E1A` });
         continue;
       }
-      cmds.push({ type: "rest", cityId: c2.id });
+      cmds.push({ cmd: { type: "rest", cityId: c2.id } });
       continue;
     }
     const selfNeed = c2.troops * 0.2;
@@ -1341,7 +1345,10 @@ function planTurn(state, fid) {
           Math.floor(hungry.troops * 0.2 + 1500 - hungry.food)
         );
         if (amount > 800) {
-          cmds.push({ type: "move", cityId: c2.id, to: hungry.id, squads: [], gold: 0, food: amount, captives: [] });
+          cmds.push({
+            cmd: { type: "move", cityId: c2.id, to: hungry.id, squads: [], gold: 0, food: amount, captives: [] },
+            note: `${CITY_BY_ID[hungry.id].name} \u7F3A\u7CAE\uFF0C\u81EA ${name} \u8C03\u7CAE ${amount} \u6551\u6D4E`
+          });
           continue;
         }
       }
@@ -1353,26 +1360,29 @@ function planTurn(state, fid) {
       if (t >= 500) {
         const squads = buildMoveSquads(gens, t);
         if (squads.length > 0) {
-          cmds.push({ type: "move", cityId: c2.id, to: fwd.id, squads, gold: 0, food: 0, captives: [] });
+          cmds.push({
+            cmd: { type: "move", cityId: c2.id, to: fwd.id, squads, gold: 0, food: 0, captives: [] },
+            note: `\u81EA ${name} \u5411 ${CITY_BY_ID[fwd.id].name} \u524D\u7EBF\u8F93\u9001\u5175\u5458 ${t}`
+          });
           continue;
         }
       }
     }
     if (c2.gold >= 200 && f.develop > 0.3) {
       if (c2.agri <= c2.comm && c2.agri < 95) {
-        cmds.push({ type: "farm", cityId: c2.id });
+        cmds.push({ cmd: { type: "farm", cityId: c2.id }, note: `${name} \u5F00\u57A6\u519C\u4E1A` });
         continue;
       }
       if (c2.comm < 95) {
-        cmds.push({ type: "commerce", cityId: c2.id });
+        cmds.push({ cmd: { type: "commerce", cityId: c2.id }, note: `${name} \u53D1\u5C55\u5546\u4E1A` });
         continue;
       }
     }
     if (c2.troops < maxTroopsOf(c2) * 0.7 && c2.gold >= recruitQuote(c2).cost && c2.loyalty > 35 && c2.food > c2.troops * 0.1) {
-      cmds.push({ type: "recruit", cityId: c2.id });
+      cmds.push({ cmd: { type: "recruit", cityId: c2.id }, note: `${name} \u6269\u519B\u5907\u6218` });
       continue;
     }
-    cmds.push({ type: "rest", cityId: c2.id });
+    cmds.push({ cmd: { type: "rest", cityId: c2.id } });
   }
   return cmds;
 }
@@ -1411,7 +1421,7 @@ function runScenario(scenarioId, seed) {
   for (const c2 of state.cities) prevOwners.set(c2.id, c2.owner);
   for (let m = 0; m < MONTHS; m++) {
     for (const f of state.factions.filter((f2) => f2.alive)) {
-      for (const cmd of planTurn(state, f.id)) {
+      for (const { cmd } of planTurn(state, f.id)) {
         const res = executeCommand(state, cmd, f.id);
         if (res.battle) {
           const r = autoRunBattle(createBattle(res.battle));

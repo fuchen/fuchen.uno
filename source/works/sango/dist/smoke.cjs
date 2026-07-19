@@ -548,10 +548,10 @@ function bestStat(city, stat) {
   return best;
 }
 function maxTroopsOf(city) {
-  return CITY_BY_ID[city.id].pop * 400;
+  return CITY_BY_ID[city.id].pop * 1e3;
 }
 function recruitQuote(city) {
-  const add = Math.min(400 + bestStat(city, "cha") * 8, maxTroopsOf(city) - city.troops);
+  const add = Math.min(400 + bestStat(city, "cha") * 8 + CITY_BY_ID[city.id].pop * 60, maxTroopsOf(city) - city.troops);
   return { add: Math.max(0, Math.round(add)), cost: Math.round(150 + add * 0.15) };
 }
 function validateCommand(state, cmd, fid) {
